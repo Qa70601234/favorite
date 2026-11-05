@@ -1,12 +1,11 @@
 // functions/api/_kvAdapter.js
-const REST_URL = process.env.UPSTASH_REDIS_REST_URL;
-const REST_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;
-
-if (!REST_URL || !REST_TOKEN) {
-  throw new Error("缺少 Upstash 环境变量：UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN");
-}
+let REST_URL = "";
+let REST_TOKEN = "";
 
 async function redisCommand(cmd, ...args) {
+  if (!REST_URL || !REST_TOKEN) {
+    throw new Error("缺少 Upstash 配置");
+  }
   const resp = await fetch(REST_URL, {
     method: "POST",
     headers: {
@@ -22,7 +21,6 @@ async function redisCommand(cmd, ...args) {
   return data.result;
 }
 
-// KV 实例
 const kvInstance = {
   async get(key) {
     const raw = await redisCommand("GET", key);
@@ -47,19 +45,19 @@ const kvInstance = {
   }
 };
 
-// 对外 getKV，debug.js / auth.js 要调用这个
+// getKV 接收 env，在这里赋值 upstash 地址和token
 export function getKV(env) {
+  REST_URL = env.UPSTASH_REDIS_REST_URL;
+  REST_TOKEN = env.UPSTASH_REDIS_REST_TOKEN;
   return kvInstance;
 }
 
-// 鉴权函数，auth.js / debug.js 依赖
 export async function verifyAuth({ providedPassword, serverPassword, kv }) {
   if (!serverPassword) return false;
   if (!providedPassword) return false;
   return providedPassword === serverPassword;
 }
 
-// CORS 头
 export function getCorsHeaders(env) {
   return {
     "Access-Control-Allow-Origin": "*",
@@ -68,7 +66,6 @@ export function getCorsHeaders(env) {
   };
 }
 
-// json 返回包装
 export function jsonResponse(data, status = 200, headers = {}) {
   return new Response(JSON.stringify(data, null, 2), {
     status,
@@ -79,5 +76,4 @@ export function jsonResponse(data, status = 200, headers = {}) {
   });
 }
 
-// 默认导出（兼容其他旧写法）
 export default kvInstance;
