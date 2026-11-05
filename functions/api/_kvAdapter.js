@@ -1,10 +1,9 @@
 // functions/api/_kvAdapter.js
-let REST_URL = "";
-let REST_TOKEN = "";
-
-async function redisCommand(cmd, ...args) {
+async function redisCommand(env, cmd, ...args) {
+  const REST_URL = env.UPSTASH_REDIS_REST_URL;
+  const REST_TOKEN = env.UPSTASH_REDIS_REST_TOKEN;
   if (!REST_URL || !REST_TOKEN) {
-    throw new Error("缺少 Upstash 配置");
+    throw new Error("Missing UPSTASH env");
   }
   const resp = await fetch(REST_URL, {
     method: "POST",
@@ -16,45 +15,43 @@ async function redisCommand(cmd, ...args) {
   });
   const data = await resp.json();
   if (data.error) {
-    throw new Error(`Upstash Error: ${data.error}`);
+    throw new Error(`Upstash: ${data.error}`);
   }
   return data.result;
 }
 
-const kvInstance = {
-  async get(key) {
-    const raw = await redisCommand("GET", key);
-    if (raw === null) return null;
-    try {
-      return JSON.parse(raw);
-    } catch {
-      return raw;
+function makeKV(env) {
+  return {
+    async get(key) {
+      const raw = await redisCommand(env, "GET", key);
+      if (raw === null) return null;
+      try {
+        return JSON.parse(raw);
+      } catch {
+        return raw;
+      }
+    },
+    async set(key, value) {
+      const str = typeof value === "string" ? value : JSON.stringify(value);
+      await redisCommand(env, "SET", key, str);
+      return true;
+    },
+    async del(key) {
+      await redisCommand(env, "DEL", key);
+      return true;
+    },
+    async keys(pattern) {
+      return await redisCommand(env, "KEYS", pattern);
     }
-  },
-  async set(key, value) {
-    const str = typeof value === "string" ? value : JSON.stringify(value);
-    await redisCommand("SET", key, str);
-    return true;
-  },
-  async del(key) {
-    await redisCommand("DEL", key);
-    return true;
-  },
-  async keys(pattern) {
-    return await redisCommand("KEYS", pattern);
-  }
-};
+  };
+}
 
-// getKV 接收 env，在这里赋值 upstash 地址和token
 export function getKV(env) {
-  REST_URL = env.UPSTASH_REDIS_REST_URL;
-  REST_TOKEN = env.UPSTASH_REDIS_REST_TOKEN;
-  return kvInstance;
+  return makeKV(env);
 }
 
 export async function verifyAuth({ providedPassword, serverPassword, kv }) {
-  if (!serverPassword) return false;
-  if (!providedPassword) return false;
+  if (!serverPassword || !providedPassword) return false;
   return providedPassword === serverPassword;
 }
 
@@ -75,5 +72,3 @@ export function jsonResponse(data, status = 200, headers = {}) {
     }
   });
 }
-
-export default kvInstance;
