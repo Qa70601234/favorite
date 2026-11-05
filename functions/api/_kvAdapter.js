@@ -1,23 +1,31 @@
-// functions/api/_kvAdapter.js
 async function redisCommand(env, cmd, ...args) {
   const REST_URL = env.UPSTASH_REDIS_REST_URL;
   const REST_TOKEN = env.UPSTASH_REDIS_REST_TOKEN;
   if (!REST_URL || !REST_TOKEN) {
     throw new Error("Missing UPSTASH env");
   }
-  const resp = await fetch(REST_URL, {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${REST_TOKEN}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify([cmd, ...args])
-  });
-  const data = await resp.json();
-  if (data.error) {
-    throw new Error(`Upstash: ${data.error}`);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 5000);
+  try {
+    const resp = await fetch(REST_URL, {
+      method: "POST",
+      signal: controller.signal,
+      headers: {
+        "Authorization": `Bearer ${REST_TOKEN}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify([cmd, ...args])
+    });
+    clearTimeout(timeout);
+    const data = await resp.json();
+    if (data.error) {
+      throw new Error(`Upstash api error: ${data.error}`);
+    }
+    return data.result;
+  } catch (e) {
+    clearTimeout(timeout);
+    throw new Error(`Fetch failed: ${e.message}`);
   }
-  return data.result;
 }
 
 function makeKV(env) {
